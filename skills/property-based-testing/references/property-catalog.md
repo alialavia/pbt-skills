@@ -400,3 +400,12 @@ The strongest test suites use multiple categories per function. For a sorting fu
 - Metamorphic: `sort(reverse(xs)) == sort(xs)` (#4)
 
 Each property catches different bugs. The oracle would catch all of them, but if you don't have an oracle, the combination of invariants is nearly as strong — and is often more robust to acceptable variations in implementation (e.g., stable vs unstable sort).
+
+## References
+
+The eight categories above are a pedagogical expansion of the five presented in John Hughes' "How to Specify It!: A Guide to Writing Properties of Pure Functions" (TFP 2019; Springer LNCS 12053). Hughes is a co-creator of QuickCheck and the canonical academic reference for this skill. His five categories — invariants, postconditions, metamorphic properties, inductive properties, and model-based properties — are empirically validated against eight buggy binary-search-tree implementations in the paper, with model-based testing emerging as the strongest single approach (close to 100% bug-catching rate). The expansion here splits algebraic laws, round-trips, monotonicity, and error/partiality into their own categories — more handles for brainstorming, not a disagreement with Hughes' framing.
+
+The paper also opens with the warning that frames Step 1 of the discovery workflow: the dominant pitfall in PBT is *replicating the code in the tests*. That warning is the reason the workflow reads the implementation only after properties have been designed.
+
+- Hughes, J. (2019). *How to Specify It!: A Guide to Writing Properties of Pure Functions.* TFP 2019, LNCS 12053. Open-access preprint: <https://research.chalmers.se/publication/517894/file/517894_Fulltext.pdf>
+- Property-Generated Solver (2025). arXiv [2506.18315](https://arxiv.org/abs/2506.18315) — measures pass@1 improvements when LLM-generated code is constrained by a property specification before generation; cited in `property-driven-design.md` and `interpreting-failures.md` for the "cycle of self-deception" framing.
