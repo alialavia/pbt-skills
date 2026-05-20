@@ -1,15 +1,16 @@
 # Interpreting a Failed Property Test
 
-When a property test fails, the first move is *not* to fix the implementation. There are four possible causes; only one of them means the code is wrong.
+When a property test fails, the first move is *not* to fix the implementation. There are five possible causes; only one of them means the code is wrong.
 
-## The four possible causes
+## The five possible causes
 
 1. **Bug in the implementation.** The function violates a property it should hold. This is the common case but not the assumed case.
 2. **Bug in the property.** The property is mis-stated and the implementation is correct. Common when the property was derived from a fuzzy understanding of the contract.
 3. **Bug in the generator.** The strategy produces inputs that fall outside the documented input domain, and the property is correctly *not* claimed to hold for those inputs.
 4. **Flakiness.** Nondeterminism in the system under test (time, ordering, external state, uninitialized memory) that property-based testing surfaced because it ran the function many times.
+5. **Implementation coupling.** The property held for the implementation that existed when it was written, but it was silently testing more behavior than the contract guaranteed. A legitimate, behavior-preserving refactor changed an implementation detail the property depended on. Distinct from cause 2: the property may have been a perfectly fine *test of the old code*; it was just over-specified relative to the contract. Symptom: the property starts failing after a refactor that was supposed to be a no-op.
 
-Each cause has a different fix. Treating cause 2, 3, or 4 as cause 1 produces a "fix" that masks the real issue.
+Each cause has a different fix. Treating cause 2, 3, 4, or 5 as cause 1 produces a "fix" that masks the real issue. The fix for cause 5 is to weaken the property to the contract level, not to revert the refactor.
 
 ## The LLM-specific risk: the cycle of self-deception
 
@@ -29,6 +30,10 @@ Look at the shrunk input. Is it a value the function is supposed to handle? If t
 
 Reread the test's docstring against the function's actual contract (interface comment, spec, design doc). If the property mismatches the contract, the property is the bug. Often: the property assumed associativity for an operation that's only commutative, or assumed exact equality where the contract allows approximate.
 
+**2b. Did the failure follow a refactor that should have been behavior-preserving?**
+
+Check `git log` on the function. If a recent change was intended as a no-op refactor (rename, restructure, swap an internal data structure) and the property started failing afterwards, suspect implementation coupling (cause 5). Ask: does the property assert something the *contract* guarantees, or something the *old implementation* happened to do? If the latter, weaken the property to the contract level — the refactor is correct.
+
 **3. Does a known-correct reference also fail the property on this input?**
 
 Run the shrunk counterexample through a reference implementation — the stdlib version, a brute-force version, a previous release. If the reference also fails the property, then the property is wrong about reality, not about the code. Fix the property.
@@ -37,7 +42,7 @@ Run the shrunk counterexample through a reference implementation — the stdlib 
 
 Re-run with the `@reproduce_failure(...)` blob (Hypothesis) or the equivalent seed (fast-check `seed`, proptest persistence file). If the same input passes on the second run, you have flakiness — chase the nondeterminism (clock, ordering, uninitialized state, network, filesystem) before treating this as a property failure. A flaky property test is worse than no test: it teaches the team to ignore failures.
 
-**5. All four checks passed — it's a real bug.**
+**5. All five checks passed — it's a real bug.**
 
 Now isolate. Is the bug in the function itself, or in something it calls transitively? The shrunk counterexample is your starting input; reduce further by hand if the shrinker stopped early, then bisect through the call stack.
 

@@ -75,6 +75,17 @@ Use the discovery workflow when:
 - You're reviewing PBT tests someone else wrote.
 - The contract is clear and the work is verification, not design.
 
+## Connection to the discovery workflow's three-pass discipline
+
+Discovery and property-driven design are two ways of enforcing the same principle: **the specification should not be contaminated by the implementation.** They differ in mechanism only.
+
+- **Discovery mode** (`SKILL.md` Steps 1A → 1B → 1C) enforces the separation in *time*: write the contract from the surface, design properties, then read the body. Hughes' three-pass discipline.
+- **Design mode** (this reference) enforces the separation in *existence*: write the properties when there is no body to contaminate them. Step 1C — the implementation pass — does not apply, because there is no implementation yet.
+
+When the implementation eventually exists, the design-mode session ends and the discovery workflow resumes for any future modifications. At that point Step 1C applies in its normal form: read the body, verify it satisfies the properties, refine the input generator with edge cases the code suggests, and audit each property for accidental coupling to whatever the first implementer chose.
+
+Treat them as complementary postures on the same underlying epistemics, not as two unrelated workflows.
+
 ## Pairing with lightweight formal methods
 
 Properties that hold for all valid refinements are a step toward executable specifications. "The implementation satisfies the properties" is a weaker claim than "the implementation satisfies the spec," but it is the same shape of claim — both quantify over the input domain. When the property set is complete enough to pin down behavior, property-driven design is the on-ramp to TLA+-style spec work without the up-front cost of learning a spec language.
