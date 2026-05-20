@@ -114,6 +114,44 @@ def run_query(self, query):
 
 Hypothesis will skip rules whose preconditions are false. Don't use `assume()` inside the rule body for state checks — `@precondition` integrates with the search and shrinking; `assume()` just throws away cases.
 
+## Don't skip error paths in rules
+
+`@precondition` keeps the happy path clean, but a rule that *also* knows about invalid states should not silently `return` when those states arise. The natural instinct is:
+
+```python
+# Skips error-path coverage entirely:
+@rule(account=accounts, amount=positive_money)
+def withdraw(self, account, amount):
+    if account not in self.model:
+        return                              # bug here is invisible
+    if self.model[account] < amount:
+        return                              # bug here is invisible
+    self.bank.withdraw(account, amount)
+    self.model[account] -= amount
+```
+
+The bank's error-handling paths are now exercised by zero tests. If a refactor changes `AccountNotFound` to a silent no-op, this suite will not notice. The better pattern is to call the operation anyway and assert the exception:
+
+```python
+# Tests error-path coverage:
+@rule(account=accounts, amount=positive_money)
+def withdraw(self, account, amount):
+    if account not in self.model:
+        with pytest.raises(AccountNotFound):
+            self.bank.withdraw(account, amount)
+        return
+    if self.model[account] < amount:
+        with pytest.raises(InsufficientFunds):
+            self.bank.withdraw(account, amount)
+        return
+    self.bank.withdraw(account, amount)
+    self.model[account] -= amount
+```
+
+Now every generated operation tests *something* — either the happy path or the correct exception for an invalid state.
+
+When to prefer `@precondition` over inline rejection tests: when the invalid state isn't meaningful for *this* rule (e.g., you're testing concurrency between rules and "no accounts exist" would just produce noise). When the invalid state *is* part of the contract you care about, inline `pytest.raises` is better — it converts a missed call into a real assertion.
+
 ## Invariants vs. rules
 
 - `@rule` — an operation that changes state.
