@@ -1,0 +1,24 @@
+{
+  "name": "pbt-skills",
+  "owner": {
+    "name": "Ali",
+    "url": "https://github.com/alialavia"
+  },
+  "metadata": {
+    "description": "Property-based testing skills for Claude — language-agnostic invariant discovery plus library-specific helpers",
+    "version": "0.1.0",
+    "repository": "https://github.com/alialavia/pbt-skills"
+  },
+  "plugins": [
+    {
+      "name": "pbt",
+      "description": "Write genuine property-based tests: find real invariants, name oracles, avoid tautologies and shrink-hostile generators. Includes a language-agnostic core skill plus Hypothesis (Python) helpers.",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./skills/property-based-testing",
+        "./skills/pbt-hypothesis"
+      ]
+    }
+  ]
+}
