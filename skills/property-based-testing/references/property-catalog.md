@@ -280,31 +280,33 @@ The key idea is identical across libraries: define operations, let the library s
 
 ## 7. Error / partiality
 
-The function raises/returns an error exactly when its preconditions are violated, and never otherwise.
+The function raises/returns an error exactly when its preconditions are violated, and never otherwise. Split this into two tests, each with a generator that targets one half of the domain. Branching with `if x < 0` inside a single test wastes ~half the test budget on whichever branch the input doesn't take, and produces an ambiguous failure signal (did it raise when it shouldn't, or fail to raise when it should?).
 
 ```python
-@given(st.integers())
+@given(st.integers(max_value=-1))
 def test_sqrt_negative_raises(x):
-    if x < 0:
-        with pytest.raises(ValueError):
-            my_sqrt(x)
-    else:
-        my_sqrt(x)  # should not raise
+    with pytest.raises(ValueError):
+        my_sqrt(x)
+
+@given(st.integers(min_value=0))
+def test_sqrt_non_negative_does_not_raise(x):
+    my_sqrt(x)  # should not raise
 ```
 
 ```typescript
 fc.assert(
-  fc.property(fc.integer(), (x) => {
-    if (x < 0) {
-      expect(() => mySqrt(x)).toThrow();
-    } else {
-      expect(() => mySqrt(x)).not.toThrow();
-    }
+  fc.property(fc.integer({ max: -1 }), (x) => {
+    expect(() => mySqrt(x)).toThrow();
+  })
+);
+fc.assert(
+  fc.property(fc.integer({ min: 0 }), (x) => {
+    expect(() => mySqrt(x)).not.toThrow();
   })
 );
 ```
 
-Two complementary properties: (a) raises when it should, (b) doesn't raise when it shouldn't. Both matter — silent acceptance of invalid input is a common bug.
+Two complementary properties: (a) raises when it should, (b) doesn't raise when it shouldn't. Both matter — silent acceptance of invalid input is a common bug. Keep them in separate tests so a failure points at exactly one of the two.
 
 For languages with `Result`/`Either` types (Rust, Haskell, Scala), the same pattern applies — `Err` returned exactly when preconditions fail.
 
