@@ -26,7 +26,7 @@ What is the user actually doing? The skill has one default workflow and three si
 - **Writing tests for existing code** → the discovery workflow below (Steps 1–7). The default for most requests.
 - **Designing new code, a new feature, or a new interface** → `references/property-driven-design.md`. Properties come *before* the implementation and constrain it. Especially valuable when working with an LLM, where it measurably reduces the rate of code-and-test sharing the same misunderstanding.
 - **A property test failed and the user wants to understand why** → `references/interpreting-failures.md`. Don't assume the implementation is wrong; there are five possible causes, and the procedure pins down which one.
-- **Reviewing PBT tests written by someone else** → apply Step 6's critique questions and Step 6.5's completeness check to the existing suite. The discovery workflow's depth and breadth discipline is the audit checklist.
+- **Reviewing PBT tests written by someone else** → apply Step 5.5's reachability check, Step 6's critique questions and Step 6.5's completeness check to the existing suite. The discovery workflow's depth and breadth discipline is the audit checklist.
 
 The design and diagnostic modes are siblings to the discovery workflow, not extensions of it. They share Steps 3 (name the oracle), 4 (reject traps), and 6 (critique) — the depth discipline is the same — but they enter the lifecycle at different points.
 
@@ -115,12 +115,26 @@ Only now think about the generator decorator. The library skill (`pbt-hypothesis
 - **Think about shrinking.** When the test fails, the library shrinks the counterexample. Generators built from primitives shrink well; generators built with opaque transformations or external randomness may not. Prefer composites over filter chains.
 - **Cover the edge of the domain.** Empty containers, single elements, duplicates, max-size, boundary values, Unicode edge cases for text, NaN/inf for floats, timezone-aware vs naive datetimes, zero/negative numbers where the contract allows them.
 
+### Step 5.5: Check the generator can reach the trigger region
+
+A correct property with a generator that never produces the breaking input passes forever. This is the most common way agent-written property tests miss bugs: in PBT-Bench ([arXiv 2605.15229](https://arxiv.org/abs/2605.15229)), about a third of the analysed misses came from a strategy range that excluded the trigger, and another third from `assume()`/filter calls that discarded it. The property was fine; the search never got there.
+
+For each property, before writing the test:
+
+1. **Name the trigger region.** In one line: "if this property is broken, the inputs most likely to show it are ___." Take candidates from the contract: boundaries the docs mention (`>=` thresholds, limits, min/max of the type), equalities (duplicates, `a == b`, self-reference such as `transfer(a, a)`), emptiness, sign changes, precision limits (the last representable digit, values just below a rounding step), and interactions between two constraints that are each satisfied alone.
+2. **Check the generator produces it.** Read the strategy as written — including any defaults you are relying on, from the PBT library *or* from a domain library that builds strategies for you — and confirm the trigger region is inside it with non-trivial probability. If an explicit range, size cap, alphabet or library default excludes it, widen the strategy or add a dedicated one.
+3. **Audit every filter.** For each `assume()` / `.filter()` / `fc.pre`, ask: *could the input this discards be exactly the one that breaks the property?* `assume(a != b)` in a dedupe test, `assume(xs)` in an aggregate test, `assume(x > 0)` on a function that documents behaviour at zero — each removes a likely trigger. Filters that only remove inputs outside the *contract's* domain are fine; filters that remove "awkward" inputs inside it are hiding bugs. When in doubt, split: one test for the general case, one test (or `@example`) for the excluded region.
+4. **Pin the region explicitly when it is narrow.** If the trigger is a single value or a thin slice (exactly `50.00`, the type minimum, an empty collection), random search at a few hundred examples may still miss it. Add explicit examples (`@example` in Hypothesis, explicit values in fast-check) *and* bias the generator towards it (`one_of(boundary_values, general_values)`). More examples is the weakest fix; a generator that targets the region is the strongest.
+
+Write the trigger region into the test's docstring next to the oracle (see Step 6), so a reviewer can check the generator against it.
+
 ### Step 6: Write the test, then critique it
 
 Write the test. Then, before declaring it done, read it once more and ask:
 
 - If I deleted the function body and replaced it with `return arg` (or some other degenerate implementation), would this test still pass? If yes, the property is too weak.
 - Could a buggy implementation still satisfy this property? Think of two or three plausible bugs and check mentally whether each would be caught.
+- For each of those plausible bugs, would the *generator* actually produce an input that triggers it? A property that would catch the bug only on inputs the strategy never draws catches nothing (Step 5.5).
 - What does the library report on a failure? Is the shrunk counterexample going to be informative?
 - Am I pinning known-tricky cases with explicit examples? (Most libraries have a mechanism for this — `@example` in Hypothesis, `fc.pre` and explicit values in fast-check, etc.)
 
@@ -130,6 +144,7 @@ Write the test. Then, before declaring it done, read it once more and ask:
 test_sort_permutation_invariant:
     Property: sort returns a permutation of its input — same multiset, possibly reordered.
     Oracle:   multiset equality, computed independently (Counter / Map / HashMap).
+    Trigger:  duplicates and empty/single-element lists — generator includes both.
     Catches:  bugs that drop, duplicate, or invent elements.
 ```
 
@@ -144,6 +159,18 @@ Before declaring the suite complete, walk the eight categories in `references/pr
 - **Order-independence** (category 2, commutativity flavor): when the function aggregates over a collection, does swapping input order change the output? Easy to skip with "obviously order doesn't matter"; a sorting step inserted for performance or a hash-based dedupe can quietly break it.
 
 If a category applies and is missing, add a test. If it doesn't apply, say so out loud — the explicit ruling-out is the discipline.
+
+#### A failing test is not the end of the job
+
+When one property fails, the temptation is to report the bug and stop. Don't. Code with one contract violation often has others, and they are usually in different parts of the contract. In PBT-Bench, a strong model given an open-ended "write a test that fails" prompt found at least one bug on 97% of problems but *all* the bugs on only 12% — it wrote about two tests and stopped. The goal of a suite is to cover the contract, not to produce one red test.
+
+- Keep going through the remaining categories and contract clauses after the first failure. Report every failure, each with its own minimal counterexample.
+- A passing property is still a deliverable: it pins the contract against future regressions.
+- Don't narrow later properties to avoid the known failure (e.g. adding `assume` to skip the input that already broke one test). Mark the known failure once — an `xfail` with a reason, or a note to the user — and leave the other properties' generators wide.
+
+#### Keep a few concrete examples too
+
+Property tests and example tests miss different bugs. Example tests often miss by picking a few inputs that dodge the trigger; property tests often miss by generating around it. In PBT-Bench, combining one example-based run with the best property-based run raised the share of bugs reliably found from about 87% to about 95%. Pin the documented edge cases — the values named in the contract, the boundaries from Step 5.5 — as explicit examples on the property tests, so both kinds of search run every time.
 
 ### Step 7: Use stateful testing when appropriate
 
@@ -161,7 +188,7 @@ Read `references/anti-patterns.md` for an annotated catalog of bad property test
 
 ## When the user pushes back
 
-If the user says "just write the tests, I don't need the analysis," still do Steps 1–4 and the Step 6.5 completeness check internally, and surface only the result. Do **not** silently skip them. The discovery work is what separates a real property test from a parameterized example. Present the properties compactly before showing tests:
+If the user says "just write the tests, I don't need the analysis," still do Steps 1–4, the Step 5.5 reachability check and the Step 6.5 completeness check internally, and surface only the result. Do **not** silently skip them. The discovery work is what separates a real property test from a parameterized example. Present the properties compactly before showing tests:
 
 ```
 Properties identified:

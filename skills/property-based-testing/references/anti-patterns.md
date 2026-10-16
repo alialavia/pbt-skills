@@ -349,3 +349,56 @@ fc.assert(
 ```
 
 This trap is most common in JavaScript/TypeScript but appears in any language with split reference/value equality (Java `==` vs `.equals()`, Scala `==` vs `eq`, etc.).
+
+## 14. The Trigger-Excluding Filter
+
+```python
+@given(st.lists(st.integers()), st.integers())
+def test_remove_drops_value(xs, v):
+    assume(xs.count(v) <= 1)   # "duplicates make the assertion awkward"
+    assert v not in remove(xs, v)
+```
+
+```typescript
+fc.assert(
+  fc.property(fc.integer(), fc.integer(), (a, b) => {
+    fc.pre(a !== b);  // "transfers to self are a weird case"
+    // ... transfer(a, b, amount) invariants
+  })
+);
+```
+
+**Why it's bad**: This is different from #5. The filter isn't wasteful — it may reject only a few percent of inputs — it's *targeted at the bug*. A `remove` that drops only the first occurrence, or a `transfer` that creates money when source and destination are the same account, is exactly what these filters hide. Agents add such filters when an input makes the assertion harder to write, and the awkward input is usually the interesting one. In PBT-Bench ([arXiv 2605.15229](https://arxiv.org/abs/2605.15229)) this was the single most common reason property tests missed bugs, for some models three quarters of misses.
+
+**Fix**: Write the assertion so it holds for the awkward input too, or give the awkward input its own test. Never filter out an input the contract says is valid.
+
+```python
+@given(st.lists(st.integers()), st.integers())
+def test_remove_drops_every_occurrence(xs, v):
+    """Trigger: v appearing more than once — not filtered."""
+    assert v not in remove(xs, v)
+
+@given(st.lists(st.integers()), st.integers())
+@example(xs=[1, 1], v=1)
+def test_remove_keeps_everything_else(xs, v):
+    assert Counter(remove(xs, v)) == Counter(x for x in xs if x != v)
+```
+
+For every filter, ask: does it remove inputs outside the contract's domain (fine), or awkward inputs inside it (a hidden bug)?
+
+## 15. The Generator That Stops Short
+
+```python
+@given(st.integers(min_value=0, max_value=100))       # but the bug is at the int16 minimum
+def test_encode_roundtrip(n): ...
+
+@given(st.text(alphabet=string.ascii_letters))        # but the bug is in quoting/escaping
+def test_csv_roundtrip(s): ...
+
+@given(st.timedeltas(min_value=timedelta(0)))         # but the docs allow negative durations
+def test_interval_roundtrip(d): ...
+```
+
+**Why it's bad**: The property is right; the strategy's range, alphabet, size cap or precision never reaches the inputs that break it. These limits are rarely chosen deliberately — they come from copying a "reasonable" range, from a strategy's defaults, or from a domain library's built-in generator. A suite that passes under such a generator says nothing about the region it never visits.
+
+**Fix**: Derive bounds from the contract, not from convenience. Include the type's extremes, the separator/escape characters for text formats, negative and zero values where allowed, and the finest precision the type supports. When a library builds the strategy for you (a schema-driven row generator, a model factory), find out what it *doesn't* generate and override those columns or fields for properties whose trigger lies there. Pin very narrow triggers with explicit examples — more random examples is a weak substitute for a generator that reaches the region.
