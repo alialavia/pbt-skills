@@ -31,6 +31,8 @@ The number of generated inputs Hypothesis will try per test. Default is 100.
 
 For very fast property tests, you can crank `max_examples` very high. For slow tests (database, network), keep it low and rely on the `example database` (next section) to remember past failures.
 
+Raising `max_examples` is a weak fix for a missed bug. If the trigger is narrow — one boundary value, a type minimum, two equal elements in a long list — a few hundred uniform draws can miss it every run. Make the strategy reach it instead (`st.one_of(st.sampled_from(boundaries), general)`, `st.integers(min_value=TYPE_MIN, ...)`) and pin it with `@example`. This matters most for slow tests, where you can't afford a large budget.
+
 ## The example database
 
 Hypothesis records every failure to a local database (`.hypothesis/examples` by default). On the next run, those examples are tried first. This means:

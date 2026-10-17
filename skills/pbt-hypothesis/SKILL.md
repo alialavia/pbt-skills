@@ -34,7 +34,7 @@ def test_sort_permutation(xs):
 Key elements every Hypothesis test should have:
 
 1. `@given(...)` with a strategy that matches the input domain precisely
-2. A docstring stating the property in English and naming the oracle
+2. A docstring stating the property in English, naming the oracle, and naming the trigger region the strategy must reach
 3. An assertion that fails meaningfully — not just `assert result`
 4. Where applicable, `@example(...)` decorators pinning known-tricky cases
 
@@ -164,6 +164,8 @@ def test_no_mutation(xs):
 
 Each `assume(cond)` that fails costs Hypothesis an example. If your assumption fails often, you get warned with `HealthCheck.filter_too_much` — but the warning is the *symptom*, not the cause. The cause is a strategy that doesn't match the input domain. Fix the strategy, don't suppress the health check.
 
+The quieter cost is worse: an `assume` that rejects only a few inputs raises no health check, and may be rejecting exactly the inputs that break the property — `assume(a != b)` in a dedupe test, `assume(src != dst)` in a transfer test. Before keeping any `assume`, check it only removes inputs outside the contract (core skill, Step 5.5 and anti-pattern #14).
+
 ### `st.floats()` defaults include NaN and infinity
 
 `assert a + b == b + a` fails for NaN because NaN is not equal to itself. Always use `st.floats(allow_nan=False, allow_infinity=False)` unless you're explicitly testing NaN behavior.
@@ -213,6 +215,7 @@ Recall the core workflow:
 3. Name the oracle for each
 4. Reject the obvious traps
 5. **Design the strategy** ← Hypothesis specifics start here
+   - **Check it reaches the trigger region** (core Step 5.5) ← ranges, alphabets, size caps, `assume`/`.filter`, `@example` for narrow triggers
 6. **Write the test, then critique it** ← and continue here
 7. **Use stateful testing when appropriate** ← `RuleBasedStateMachine` if so
 

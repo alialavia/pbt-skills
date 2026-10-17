@@ -241,6 +241,9 @@ This guarantees those cases are always tested, even when the random strategy doe
 - It rejects more than ~10% of inputs (redesign the strategy)
 - The "constraint" is really part of the input's definition (build it into the strategy)
 - You're using it to silence test failures (you're hiding bugs)
+- It removes inputs the contract says are valid because they make the assertion awkward to write — duplicates, equal pairs, empty inputs, zero, self-reference. These are the inputs most likely to break the property; a low rejection rate doesn't make the filter safe. Rewrite the assertion to cover them, or test them separately.
+
+A quick audit for every `assume(cond)` and `.filter(pred)`: write down an input it rejects and ask whether a buggy implementation would misbehave on it. If yes, the filter is hiding the bug.
 
 ## Customizing example generation: `target`
 
