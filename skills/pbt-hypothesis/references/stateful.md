@@ -152,6 +152,29 @@ Now every generated operation tests *something* — either the happy path or the
 
 When to prefer `@precondition` over inline rejection tests: when the invalid state isn't meaningful for *this* rule (e.g., you're testing concurrency between rules and "no accounts exist" would just produce noise). When the invalid state *is* part of the contract you care about, inline `pytest.raises` is better — it converts a missed call into a real assertion.
 
+Caveat: the rule-body discipline above only fires when the rule actually *receives* invalid input. Smart generators that produce only valid inputs — `Bundle`, composite strategies, anything well-formed by construction — remove invalid inputs from the search space and make the rejection branches above unreachable. See the next section.
+
+## Smart generators hide error paths — cover them with a separate rule
+
+Generators that produce only valid inputs by construction (`Bundle`, `@st.composite`, FK-respecting builders, recursive strategies that always emit well-formed trees) keep happy-path tests clean. They also remove invalid inputs from the search space. The rule-body discipline only fires when a rule *receives* invalid input; with a smart generator, no rule ever does, and the SUT's rejection branches go untested.
+
+This is the stateful counterpart of the rejection-test pattern in [`property-catalog.md` §7](../../property-based-testing/references/property-catalog.md#7-error--partiality): if the SUT has an error branch you care about, generate from the invalid domain *directly* and assert the exception. In stateful tests that means a dedicated rule:
+
+```python
+# Identifiers disjoint from anything the happy-path generator produces.
+invalid_ids = st.sampled_from(["__sentinel_a__", "__sentinel_b__"])
+
+@rule(item_id=invalid_ids)
+def lookup_on_unknown_id_raises(self, item_id):
+    """lookup() must raise NotFoundError for an id that was never created."""
+    with pytest.raises(NotFoundError):
+        self.system.lookup(item_id)
+```
+
+Sentinel values disjoint from anything the smart generator produces are simpler than filtering or `assume()`. Add one such rule per rejection branch in the SUT's contract.
+
+The general principle: **a generator that excludes invalid inputs by construction excludes the test-level coverage of the rejection branches that handle them.** Smart generators are a happy-path tool, not a complete-coverage tool — they need to be paired with rules whose strategies target the invalid domain, or with a generator design (e.g., `st.sampled_from(small_pool)`) that mixes valid and invalid inputs in every rule.
+
 ## Invariants vs. rules
 
 - `@rule` — an operation that changes state.
